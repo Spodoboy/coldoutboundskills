@@ -39,6 +39,17 @@ Open-source [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/
 - **`icp-prompt-builder`** — required qualification step invoked by every list-building skill
 - **`list-quality-scorecard`** — grade a lead CSV across 8 dimensions before uploading
 
+### Common Outbound Lists (bundled CSVs)
+
+Ready-to-filter company dumps in [`Common Outbound Lists/`](Common%20Outbound%20Lists/). These are **companies, not people** — feed them to `/list-builder` as `extra_candidates`, then run `/icp-prompt-builder` before contact pull.
+
+| List | Rows | What it is |
+|---|---|---|
+| [Shopify Stores — 259K Active](Common%20Outbound%20Lists/shopify-stores-259k-active.csv.zip) | 259,293 | Shopify stores with ≥1k estimated monthly visits. Columns: `domain`, `merchant_name`, `description`, `company_linkedin` (65% fill). Notes: [shopify-stores-259k-active.md](Common%20Outbound%20Lists/shopify-stores-259k-active.md) |
+| [Google Maps Scrape — 12M US Businesses](Common%20Outbound%20Lists/Google%20Maps%20Scrape%20-%2012M%20US%20Businesses/) | ~12.3M | US local businesses (13 zip parts). Grep `category_titles` first |
+| [US Software / SaaS companies](Common%20Outbound%20Lists/us-software-saas-companies-cleaned.zip) | ~173K | Cleaned software/SaaS company list |
+| [US zip codes](Common%20Outbound%20Lists/us-zip-codes.csv) | 42,734 | Zip / city / state / lat-lng / population — used by `/google-maps-list-builder` |
+
 ### Track 4 — Copy & Send
 - **`cold-email-starter-kit`** — the 14-step end-to-end tutorial (alternative to `/cold-email-kickoff`)
 - **`spam-word-checker`** — scan copy for deliverability-killing phrases
@@ -174,6 +185,7 @@ The minimum viable setup for your first campaign is: **Dynadot + Zapmail + Prosp
 cold-email-ai-skills/
   README.md                    # this file
   .env.example                 # template for your API keys
+  Common Outbound Lists/       # pre-built company CSVs (Shopify, Maps, SaaS)
   skills/
     <skill-name>/
       SKILL.md                 # the skill definition (required)

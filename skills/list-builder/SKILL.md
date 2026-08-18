@@ -163,8 +163,14 @@ Run ALL applicable sources, dedup by domain (`normDomain` in list-expander `lib.
 - **Blitz** `POST /v2/search/companies` (free) when company-first.
 - **Google Maps** when local/SMB — `/google-maps-list-builder` (live scrape by category ×
   metro). Category names are ground truth for local trades (e.g. 'Fence contractor'), so
-  sweep the category rather than a keyword guess. If you keep a bulk Maps export on disk,
-  grep it by category first (free) and feed the result in as `extra_candidates`.
+  sweep the category rather than a keyword guess. If you keep a bulk Maps export on disk
+  (`Common Outbound Lists/Google Maps Scrape - 12M US Businesses/`), grep it by category
+  first (free) and feed the result in as `extra_candidates`.
+- **Shopify / DTC** — start from the bundled
+  `Common Outbound Lists/shopify-stores-259k-active.csv.zip`
+  (259K Active stores with ≥1k estimated monthly visits; `domain`, `merchant_name`,
+  `description`, `company_linkedin`). Unzip and pass the CSV as `extra_candidates`.
+  Still run `/icp-prompt-builder` + live-site verify; ~11–12% of snapshot stores go dead.
 - **Parallel entity-search / Exa findSimilar / DiscoLike** — already inside list-expander
   Phase 2 (see `/disco-like`). For local-service TAMs, ALSO run a Parallel per-metro fan-out
   (one objective per metro, match_limit ~40, ~$0.005/call, then keyword-filter the output —
