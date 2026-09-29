@@ -199,6 +199,8 @@ async function main() {
   let reserve = [...insuranceRows];
 
   // Cancel a burned domain only if a reserve can replace its capacity.
+  // activeCap above already EXCLUDES burned domains, so a cancel costs nothing more here
+  // and a kept-below-threshold domain (still sending) has to be added back in.
   for (const r of burned) {
     const swap = reserve.shift();
     if (swap) {
@@ -207,10 +209,11 @@ async function main() {
       actions.push({ domain: swap.domain, action: "PROMOTE", from: "insurance", to: "active",
         capacity_per_day: swap.capacity_per_day, verdict: swap.verdict,
         reason: `replaces ${r.domain}; oldest eligible reserve (${swap.age_days}d)` });
-      cap += swap.capacity_per_day - r.capacity_per_day;
+      cap += swap.capacity_per_day;
     } else {
       r.verdict = "KEEP_BELOW_THRESHOLD";
       r.reason += " — no reserve to swap in; BUY FIRST, cancel next week";
+      if (r.status === "active") cap += r.capacity_per_day;
     }
   }
 

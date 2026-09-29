@@ -19,16 +19,17 @@ const MANAGED = ["active", "insurance", "warmup", "cancel"];
 const BATCH = 10; // small batches, verified one at a time — see cancellation-safety.md
 
 async function setTag(inbox: InboxAccount, to: string): Promise<void> {
+  // Same endpoint and payload shape as smartlead-inbox-manager/scripts/tag-inboxes.ts.
   // Smartlead has no tag-delete on every version: replace the whole list, omitting the
   // managed tags we are superseding and keeping everything else the user put there.
   const keep = (inbox.tags ?? [])
-    .map((t) => String(t.name))
-    .filter((n) => !MANAGED.includes(n.toLowerCase()));
-  const tags = [...keep, to];
-  await fetchJson(`${API_BASE}/email-accounts/${inbox.id}?api_key=${API_KEY}`, {
+    .filter((t: any) => !MANAGED.includes(String(t.name).toLowerCase()))
+    .map((t: any) => ({ id: t.id, name: t.name, color: t.color }));
+  const tags = [...keep, { name: to }];
+  await fetchJson(`${API_BASE}/email-accounts/tag?api_key=${API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tags }),
+    body: JSON.stringify({ email_account_ids: [inbox.id], tags }),
   });
 }
 
