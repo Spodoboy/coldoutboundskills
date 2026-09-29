@@ -8,7 +8,7 @@ Open-source [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/
 
 ## What's in here
 
-31 skills organized in 5 tracks, plus 19 signal playbooks in Track 6 — each shipping three ways (a Claude skill, a Clay table build, and a Clay CLI workflow).
+32 skills organized in 5 tracks, plus 19 signal playbooks in Track 6 — each shipping three ways (a Claude skill, a Clay table build, and a Clay CLI workflow).
 
 **New to cold email? Start with `/cold-email-kickoff`.** It orchestrates ICP → lead magnet → campaign strategy → plan in one guided flow.
 
@@ -22,8 +22,9 @@ Open-source [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/
 ### Track 2 — Infrastructure
 - **`zapmail-domain-setup-public`** — buy `.com`/`.co` domains on Dynadot, provision inboxes on Zapmail
 - **`smartlead-inbox-manager`** — warmup settings, signatures (name/title/company/address), active/insurance tagging
-- **`email-deliverability-audit`** — diagnostic tool (SPF/DKIM/DMARC, spam placement, 1% rule)
+- **`email-deliverability-audit`** — diagnostic tool (SPF/DKIM/DMARC, spam placement, the 1% rule)
 - **`deliverability-incident-response`** — triage playbook for spam, bounces, blacklists, warmup blocks
+- **`inbox-lifecycle-manager`** — the weekly keep/cancel/promote/buy loop: which domains are burned, what replaces them, how many to buy
 
 ### Track 3 — List Building
 - **`list-builder`** — the meta skill for any list request: one-command lanes that sweep every source, AI-qualify every company, snowball until the market is dry, then pull uncapped contacts and find emails
@@ -159,6 +160,13 @@ The minimum viable setup for your first campaign is: **Dynadot + Zapmail + Prosp
 2. `/positive-reply-scoring` — see if replies are positive or hostile
 3. `/deliverability-test-public` — compare across inbox types
 4. `/spam-word-checker` — scan copy for banned phrases
+5. `/inbox-lifecycle-manager` — if a domain is confirmed burned, cancel and replace it safely
+
+**If your inbox bill is too high, or you're under your send goal:**
+1. `/inbox-lifecycle-manager` — the plan: what's burned, what to promote, what to buy (read-only)
+2. `/email-deliverability-audit` — confirm *why* before cancelling anything
+3. `/smartlead-inbox-manager` — execute the approved tag changes
+4. `/zapmail-domain-setup-public` — buy the replacements (a month before you need the sends)
 
 ## Directory layout
 

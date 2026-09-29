@@ -199,21 +199,34 @@ npx tsx scripts/list-health.ts --all --out=health-$(date +%Y-%m-%d).csv
 
 Review the action items. Replace blocked inboxes.
 
-## The 1% rule — when to retire an inbox
+## When to retire an inbox
 
-**A healthy inbox should have an overall reply rate of ≥1% after sending 200+ emails.** Below that, it's likely burned or has poor deliverability.
+This skill is the **mechanics** of retiring an inbox. The **decision** belongs to
+`/inbox-lifecycle-manager`, which applies the full ladder — age guard, send floors, bounce fork,
+and a check that you have a warmed reserve to swap in before you take capacity away.
 
-To identify inboxes failing this rule:
+The cancel line is the 1% rule: **reply rate <1% over 200+ sends** (or zero replies on 150+), on a
+domain at least 30 days old. The floors do the protecting, not a softer threshold.
+
+Three rules that matter here, because it is easy to retire the wrong thing from this skill:
+
+1. ⛔ **Retire whole domains, never single inboxes.** Mailbox providers judge reputation at the
+   domain level. Keeping two "good" inboxes on a domain you declared burned means the good ones
+   inherit the bad one's reputation, and you are still sending from a domain you condemned.
+2. ⛔ **Never retire a domain under 30 days old**, at any reply rate. It hasn't finished ramping.
+3. ⛔ **Never retire on under 200 sends.** Below that floor a 0% reply rate cannot distinguish a
+   burned inbox from an unlucky week.
+
+Once `/inbox-lifecycle-manager` has produced an approved plan, execute it here:
 
 ```bash
-# Run the audit to find offenders
-/email-deliverability-audit → scripts/audit-performance.ts --days=30 --out=/tmp/audit/performance.csv
-
-# Then tag the failing inboxes as retired
-cat /tmp/audit/performance.csv | awk -F',' '$11 == "\"true\"" { print $1 }' > /tmp/retire-ids.txt
-npx tsx scripts/tag-inboxes.ts --ids-from-csv=/tmp/retire-ids.txt --add-tag=retired --remove-tag=active
-npx tsx scripts/set-warmup.ts --mode=disable --tag=retired
+# actions.csv comes from /inbox-lifecycle-manager — reviewed and explicitly approved
+npx tsx scripts/tag-inboxes.ts --domain=burned-domain.co --add-tag=retired --remove-tag=active
+npx tsx scripts/set-warmup.ts --mode=disable --domain=burned-domain.co
 ```
+
+Snapshot the current tags before you start — nothing here records prior state, and without a
+snapshot there is no clean undo. Read the tags back afterwards; a `200` is not proof.
 
 ## Common gotchas
 
@@ -230,12 +243,15 @@ npx tsx scripts/set-warmup.ts --mode=disable --tag=retired
 
 **If inboxes are already warm:** proceed to list-building (`/prospeo-full-export`, `/disco-like`, etc.) using `active`-tagged inboxes.
 
-**Or wait:** if health dashboard shows bad-reputation inboxes, retire them first (tag `retired`, disable warmup) before launching a new campaign.
+**Or wait:** if the health dashboard shows bad-reputation inboxes, run `/inbox-lifecycle-manager`
+to decide which ones actually warrant retirement (and what replaces their capacity) before
+launching a new campaign.
 
 ## Related skills
 
 - `/zapmail-domain-setup-public` — creates the inboxes this skill configures
 - `/email-deliverability-audit` — when health dashboard shows problems
+- `/inbox-lifecycle-manager` — decides *which* inboxes to retire, promote, or buy; this skill executes it
 - `/smartlead-api` — underlying API reference
 
 ## Scripts

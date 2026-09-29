@@ -71,20 +71,81 @@ Time-ordered actions:
 
 ## Decision tree: "bounce rate spiked"
 
-### Step 1: What kind of bounces?
+### Step 0: Do you have enough bounces to read?
 
-Smartlead categorizes bounces as hard (invalid address) or soft (temporary).
+**50 sends** before a bounce *rate* means anything. Below that, one dead address reads as 2% and
+two read as 4% — straight through the 3% line. **30 classified bounces attributed to that specific
+sending domain** before the bounce *composition* means anything. A domain with no sampled bounces
+has a 0% sender-originated share purely by construction, which looks exactly like a rotten list —
+and that is how an unmeasured domain gets a confident "go revalidate your list" verdict.
+
+### Step 1: Classify the bounces by SMTP code, not by hard/soft
+
+Hard-vs-soft is too coarse to act on. The **enhanced SMTP status code** in the bounce DSN tells
+you whose fault it is. Pull the DSN from the bounced lead's message history and take the **first**
+`[45].\d+.\d+` code in the body — DSN templates repeat the code and often quote unrelated
+examples further down in the "more info for admins" boilerplate.
+
+| Bucket | Codes | Reading | Action |
+|---|---|---|---|
+| **LIST** | `5.1.1`, `5.1.10`, `5.1.0`, `5.2.1`, `5.4.1`, `5.5.0` | The mailbox does not exist. | Revalidate the list. Keep verified-valid only; a catch-all result is a *not found*, not a pass. |
+| **SENDER (auth)** | `5.7.1`, `5.7.0`, `5.7.23`, `5.7.26`, `5.7.509`, `5.7.520` | We were refused on policy or authentication. | Fix SPF/DKIM/DMARC first, re-check in 7 days. **Fixable — do not replace the domain.** |
+| **BURNED** | `5.7.606`-`5.7.614`, or DSN text naming a blocklist/Spamhaus | The recipient world has specifically banned this sender. | `/inbox-lifecycle-manager` as a cancel candidate. DNS fixes will not help. |
+| **THROTTLE** | any `4.x.x` — `4.7.x`, `4.4.2`, `4.4.7`, `4.2.2` | Temporary. Greylisting or rate limiting. | Cut daily volume per inbox by 50% for a week. **Never cancel a domain on 4.x codes.** |
+| **NOISE** | `5.2.2` (mailbox full), `5.3.4` (too large), `5.7.133` (restricted distribution group) | Recipient-side configuration. Not a reputation signal. | Count them so the denominator is honest, then exclude them from every share calculation. |
+
+⛔ **`5.7.133` is noise, full stop.** It means "the group only accepts messages from inside its
+organization" — someone else's distribution-list setting. It is frequently the single most common
+code in a real sample, and bucketing it as a sender problem will manufacture "burned domain" cancel
+candidates out of nothing.
+
+Then compute, **per sending domain** (not per client — a client-level split cannot tell you which
+domain to act on):
 
 ```
-bounce_rate > 3% AND mostly_hard_bounces
-  → list quality problem, verify with MillionVerifier
-
-bounce_rate > 3% AND mostly_soft_bounces (greylist, temp)
-  → domain reputation problem, slow sending
-
-bounce_rate > 5% either type
-  → stop the campaign immediately to prevent ISP suspension
+sender_share = SENDER / (SENDER + LIST + BURNED)      # noise and throttle excluded
+burned_share = BURNED / (SENDER + LIST + BURNED)
 ```
+
+```
+burned_share > 20%  (≥30 classified bounces)
+  → BURNED, at any bounce rate. Evaluate this FIRST, before the rate gate — a domain
+    that is majority-blocklisted at a 2.5% bounce rate is still burned.
+
+bounce_rate > 3% AND sender_share < 25%
+  → list quality problem. Revalidate.
+
+bounce_rate > 3% AND sender_share 25-50%
+  → both diseases at once. Fix the auth gap FIRST, then revalidate. Do not go chase
+    the list when 40% of the failures are yours.
+
+bounce_rate > 3% AND sender_share > 50% AND auth incomplete
+  → SENDER_AUTH. Fixable. Fix the record, re-check in 7 days.
+
+bounce_rate > 3% AND sender_share > 50% AND auth clean
+  → BURNED. Configuration is clean and we are still refused.
+
+bounce_rate > 5% either way
+  → stop the campaign immediately to prevent ISP suspension, then classify.
+
+rising 4.x share, low permanent bounce
+  → throttle. Cut volume. Do not cancel.
+```
+
+### Step 1b: Sampling — do not enumerate every bounce
+
+A bounced row does not tell you which domain sent it; attribution only exists after you pull the
+message history. So you cannot stratify by domain up front. Spend a global budget and enforce the
+floor afterwards: sample **evenly across the in-window roster** (`roster[::step]`, never `offset=0`
+only, which is time-biased), budget roughly `30 × (domains you need a verdict on) × 1.5`, and mark
+any domain that ends up under 30 attributed bounces as *insufficient sample* rather than judging it.
+
+⚠️ Bounced-lead rosters typically return a campaign's **entire history with no date parameter**.
+Filter client-side on the sent date, or bounces from a campaign that finished six months ago will
+drive this week's decision.
+
+⚠️ Message-history fetches fail transiently. Retry 3+ times with backoff before recording "no DSN
+available" — on a real run, 61 of 64 apparently body-less leads returned a body on retry.
 
 ### Step 2: If list problem
 
@@ -113,7 +174,9 @@ Check:
 
 ### Step 3: Replace vs repair
 
-- **Domain <30 days old + blacklisted** → replace. Not worth the cleanup effort.
+- **Domain <30 days old + blacklisted** → replace. Not worth the cleanup effort. (Note this is the
+  *only* case where a sub-30-day domain gets replaced: it is a confirmed blocklisting, not a reply-rate
+  verdict. A young domain is never cancelled on performance — see `/inbox-lifecycle-manager`.)
 - **Domain >90 days old + blacklisted** → try repair. Stop sending for 7 days, submit delisting requests, slowly resume.
 - **If you replace:** archive the old domain, buy a new lookalike via `/zapmail-domain-setup-public`, warm it for 2 weeks before reusing.
 
@@ -200,10 +263,19 @@ Meanwhile: continue the weekly rhythm via `/cold-email-weekly-rhythm`, which cat
 ## Related skills
 
 - `/email-deliverability-audit` — the diagnostic suite you run first
+- `/inbox-lifecycle-manager` — when the verdict is "this domain is burned", the cancel/replace/buy decision
 - `/smartlead-inbox-manager` — tag, rotate, retire inboxes
 - `/zapmail-domain-setup-public` — replace a burned domain
 - `/positive-reply-scoring` — confirm recovery (reply rate back to baseline)
 
 ## The 1% rule sanity check
 
-After fixes, give it at least 200 sends at your normal volume. If reply rate is still <1% — there's a deeper issue. Start the playbook over.
+After fixes, give it **at least 200 sends** at your normal volume before you judge whether the fix
+worked. Below 200, a reply rate cannot distinguish a broken domain from an unlucky week.
+
+- **Reply rate back over 1%** — recovered. Resume normal rhythm.
+- **Still under 1% after 200+ sends** — the fix did not take. Either start the playbook over, or
+  accept the domain is burned and hand it to `/inbox-lifecycle-manager` for replacement. (It will
+  still refuse to cancel a domain under 30 days old — young is not the same as burned.)
+
+And give it time: reputation rebuilds slowly. Re-auditing after 2 days tells you nothing.

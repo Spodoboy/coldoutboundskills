@@ -39,23 +39,38 @@ dig TXT example.com +short | grep spf1
 Cryptographic signature that proves the email wasn't modified in transit.
 
 **Record type:** TXT
-**Host:** `<selector>._domainkey` (e.g. `default._domainkey` for Zapmail, `google._domainkey` for Workspace)
+**Host:** `<selector>._domainkey` — the selector varies by provider, see below. Never assume `default`.
 **Value:** Long public key provided by your sending provider. Looks like:
 ```
 v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC...
 ```
 
-### Zapmail default selector
-Zapmail publishes DKIM at the `default` selector. Check with:
+### ⛔ There is no single DKIM selector — check all of them
+
+Checking only `default._domainkey` is the most damaging DNS mistake in a cold email audit. It
+marks an entire healthy fleet "missing DKIM", routes genuinely burned domains to "fix your auth",
+and buys you a week of republishing records that already exist while the burned domain keeps
+sending.
+
+DKIM is present if **any** of these resolves:
+
 ```bash
-dig TXT default._domainkey.example.com +short
+dig TXT   google._domainkey.example.com    +short   # Google / Gmail-backed providers — the common one
+dig CNAME selector1._domainkey.example.com +short   # Microsoft 365 — a CNAME, not a TXT
+dig CNAME selector2._domainkey.example.com +short   # Microsoft 365, second key
+dig TXT   default._domainkey.example.com   +short   # generic fallback, frequently EMPTY
 ```
 
-### Workspace selector
-`google._domainkey.example.com`
+⚠️ **For the Microsoft selectors, accept the CNAME itself as proof.** A `dig TXT
+selector1._domainkey.example.com` returns nothing even when DKIM is configured correctly — the
+record is a CNAME pointing at `selector1._domainkey.outlook.com`.
 
-### Microsoft 365 selectors
-`selector1._domainkey.example.com` and `selector2._domainkey.example.com`
+Verified live on two real sending domains: a Gmail-backed domain published at `google._domainkey`
+(TXT), a Microsoft-backed one at `selector1._domainkey` (CNAME), and `default._domainkey` was
+**empty on both**.
+
+`scripts/check-domain-auth.ts` tries all four and reports which one resolved in the
+`dkim_selector` column. Pass `--dkim-selector=XYZ` to add a provider-specific one.
 
 ### Why it's often missing
 - Domain wasn't connected through the sending provider's onboarding flow
@@ -103,7 +118,8 @@ dig TXT _dmarc.example.com +short
 3. **Day 1 — verify all three:**
    ```bash
    dig TXT example.com +short
-   dig TXT default._domainkey.example.com +short
+   dig TXT   google._domainkey.example.com    +short   # or...
+   dig CNAME selector1._domainkey.example.com +short   # ...or selector2, or default
    dig TXT _dmarc.example.com +short
    ```
 4. **Day 1-14 — warmup:** DMARC `p=none`, SPF `~all`. Warm inboxes slowly.

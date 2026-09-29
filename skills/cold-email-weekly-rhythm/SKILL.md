@@ -20,7 +20,7 @@ Open Google Calendar / Outlook / Apple Reminders / whatever you actually look at
 | Cold email: Monday deliverability audit | Every Monday, 9:00 am |
 | Cold email: Wednesday positive-reply sweep | Every Wednesday, 10:00 am |
 | Cold email: Friday campaign retrospectives | Every Friday, 3:00 pm |
-| Cold email: Inbox rotation | Every other Monday, 11:00 am |
+| Cold email: Inbox lifecycle (cancel / promote / buy) | Every other Monday, 11:00 am |
 | Cold email: Monthly spam placement test | 1st of each month, 10:00 am |
 | Cold email: Quarterly experiment review | First Monday of each quarter, 1:00 pm |
 
@@ -40,7 +40,8 @@ Open Google Calendar / Outlook / Apple Reminders / whatever you actually look at
 
 **Review:**
 
-- Fleet reply rate over last 7 days — must be ≥1% (the 1% rule)
+- Fleet reply rate over last 7 days — must be ≥1% (the 1% rule). The same number retires a domain,
+  but only once it clears the floors: 200+ sends and 30+ days of age. See `/inbox-lifecycle-manager`.
 - Flagged campaigns (`flag_low_reply = TRUE`)
 - Flagged inboxes (`flag_high_bounce = TRUE`)
 
@@ -98,34 +99,42 @@ For each one:
 
 ---
 
-## Every other Monday — Inbox rotation (30 min)
+## Every other Monday — Inbox lifecycle (30 min)
 
-**Run:**
+The rotation decision — what to cancel, what to promote, what to buy — comes from
+`/inbox-lifecycle-manager`. Do not eyeball the health CSV and retire whatever looks bad; that is
+how healthy domains get killed on an unlucky week.
 
-```bash
-# Within /smartlead-inbox-manager skill:
-npx tsx scripts/list-health.ts --all --out=health-$(date +%Y-%m-%d).csv
-```
-
-**Review the CSV:**
-
-- Any inboxes with reputation "bad"?
-- Any inboxes with `is_warmup_blocked: true`?
-- Any inboxes with <5 sends/day despite being in active campaigns?
-
-**Action:**
+**Run (read-only, writes nothing):**
 
 ```bash
-# Retire failing inboxes
-npx tsx scripts/tag-inboxes.ts --ids=X,Y,Z --add-tag=retired --remove-tag=active
-npx tsx scripts/set-warmup.ts --mode=disable --ids=X,Y,Z
-
-# Promote insurance inboxes to active
-npx tsx scripts/tag-inboxes.ts --ids=A,B,C --add-tag=active --remove-tag=insurance
-npx tsx scripts/set-warmup.ts --mode=disable --ids=A,B,C
+# Within /inbox-lifecycle-manager:
+npx tsx scripts/plan-lifecycle.ts --goal=<your daily send goal> --out=./lifecycle-$(date +%F) --snapshot
 ```
 
-**If insurance pool is getting thin (<5 inboxes available to rotate in):** kick off a new domain purchase cycle via `/zapmail-domain-setup-public`. It takes ~2 weeks from purchase to sendable, so you need to start early.
+**Review `plan.csv` and `actions.csv`:**
+
+- `BURNED` — under 1% reply on 200+ sends, 30+ days old. These are the real cancels.
+- `KEEP_BELOW_THRESHOLD` — burned but nothing warm to replace it. **Buy first, cancel next week.**
+- `BOUNCE_FORK` — bounce over 3%. Classify the codes in `/deliverability-incident-response`
+  before condemning anything; it is usually the list, not the domain.
+- `TOO_YOUNG` / `INSUFFICIENT_DATA` — not judged. Leave them alone.
+- `HELD` — warmup is off, so reputation is unreadable. Report it; don't quietly switch warmup back on.
+
+**Action** — after you have actually looked at the plan and said yes:
+
+```bash
+# Within /inbox-lifecycle-manager (dry run first, always):
+npx tsx scripts/apply-lifecycle.ts --actions=./lifecycle-$(date +%F)/actions.csv
+npx tsx scripts/apply-lifecycle.ts --actions=./lifecycle-$(date +%F)/actions.csv --apply
+```
+
+Tags only. Provider subscription cancellations are a separate, explicitly approved step in small
+verified batches — see that skill's `references/cancellation-safety.md`.
+
+**If the plan reports a capacity shortfall:** start a domain purchase cycle via
+`/zapmail-domain-setup-public` now. It takes ~2 weeks from purchase to sendable and 30 days before
+the new domains can even be judged, so you are always buying a month ahead of the need.
 
 ---
 
@@ -194,7 +203,8 @@ This skill IS the loop. Your next action is the next calendar event on your list
 
 - `/email-deliverability-audit` — the Monday and Monthly tasks
 - `/positive-reply-scoring` — the Wednesday and Friday tasks
-- `/smartlead-inbox-manager` — the biweekly inbox rotation
+- `/inbox-lifecycle-manager` — the biweekly cancel / promote / buy decision
+- `/smartlead-inbox-manager` — executes the approved tag changes
 - `/deliverability-incident-response` — when the Monday audit flags something
 - `/experiment-design` — the quarterly retrospective feeds into this
 - `/zapmail-domain-setup-public` — when insurance pool runs low
