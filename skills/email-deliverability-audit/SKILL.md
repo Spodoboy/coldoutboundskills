@@ -18,22 +18,53 @@ description: Diagnostic audit for a running cold email program. Checks domain au
 | Bounce rate | Per-inbox and per-domain bounce rate over last 30 days | Smartlead campaign analytics |
 | Spam placement | Real inbox-vs-spam test via Smartlead Smart Delivery | optional |
 
-## The 1% rule — core domain-health threshold
+## The 1% rule — and the floors that gate it
 
-**A healthy domain should have an overall reply rate of at least 1% after 200 emails sent.**
+**A healthy domain replies at 1% or better after 200 emails sent.** Below 1% on a fair sample,
+something is broken, and if it stays broken the domain gets cancelled.
 
-Below 1% after 200+ sends is a red flag — something is broken. The audit explicitly checks this and flags any domain or inbox that:
-- Has sent ≥200 emails in the lookback window
-- Has an overall reply rate <1%
+The 1% rule is **one number**: the same 1% that flags a domain here is the line that retires it in
+`/inbox-lifecycle-manager`. What separates "flag" from "cancel" is not a softer second threshold —
+it is the **floors**. Below a floor, the answer is "we don't know yet", which is a legitimate
+output rather than a failure.
 
-Possible causes (the audit's "root-cause suggestions" try to pinpoint which):
-- Emails landing in spam (run the spam placement test)
-- Domain reputation damaged (check DMARC reports, reconsider domain age)
-- Copy is broken (manually review for vague CTAs, generic openers, or em dashes; re-run `/spam-word-checker`)
-- List is cold / wrong ICP (check bounce rate — if >3%, list is the problem)
-- Inbox hasn't warmed enough (check warmup status)
+| Judgment | Floor before it counts |
+|---|---|
+| Reply rate | **200 sends** in the window |
+| Bounce rate | **50 sends** |
+| Bounce *composition* (which bucket) | **30 classified bounces for that domain** |
+| Any cancel decision | **30 days of domain age**; unknown age counts as young |
+| Placement test | 100-300 senders per test |
 
-Below 200 sends: too early to judge. The rule needs sample size.
+Reporting `0.00% reply` on 14 sends as a failure, or condemning a three-week-old domain that has
+not finished ramping, is how healthy domains get killed.
+
+| Reply rate (≥200 sends) | Reading |
+|---|---|
+| **≥ 1.5%** | Genuinely good. Leave it alone. |
+| **1.0 - 1.5%** | Healthy. The rule passes. |
+| **< 1.0%** | Burned. Hand to `/inbox-lifecycle-manager` — but only if it also clears the 200-send and 30-day floors. |
+| **0 replies on ≥150 sends** | Decisive. A flat zero needs less sample than a low-but-nonzero rate. |
+
+Possible causes when a domain is below the line (the audit's root-cause suggestions try to
+pinpoint which):
+- Emails landing in spam — run the spam placement test
+- Domain reputation damaged — check DMARC reports and the bounce codes
+- Copy is broken — re-run `/spam-word-checker`; confirm with a control-fleet placement test
+- List is cold or wrong ICP — check bounce rate; if >3%, the list is the problem, not the domain
+- Inbox hasn't warmed enough — check warmup status and domain age
+
+### The domain-vs-copy isolation test
+
+Low placement alone does not tell you whether the domain is burned or the copy is toxic. Run the
+same copy from a known-good control fleet:
+
+| Your fleet | Control fleet | Verdict |
+|---|---|---|
+| < 100% | ~100% | **Domain-side.** Your sending infrastructure is the problem. |
+| < 100% | < 100% | **Copy.** Rewrite before you replace a single domain. |
+| ≥ 85% | ≥ 85% | Neither. Infrastructure is fine — this is targeting or offer. |
+| control untestable | — | Assume copy. It is cheaper to fix and reversible. |
 
 ## When to use
 
@@ -70,10 +101,20 @@ npx tsx scripts/check-domain-auth.ts --from-csv=/tmp/audit/inboxes.csv --out=/tm
 
 For each unique domain, runs:
 ```bash
-dig TXT <domain> +short          # SPF
-dig TXT default._domainkey.<domain> +short    # DKIM (Zapmail uses "default")
-dig TXT _dmarc.<domain> +short   # DMARC
+dig TXT <domain> +short                             # SPF
+dig TXT _dmarc.<domain> +short                      # DMARC
+
+# DKIM has NO single selector. Present if ANY of these resolves:
+dig TXT   google._domainkey.<domain>    +short      # Google / Gmail-backed — the common one
+dig CNAME selector1._domainkey.<domain> +short      # Microsoft 365 — a CNAME, TXT returns nothing
+dig CNAME selector2._domainkey.<domain> +short      # Microsoft 365, second key
+dig TXT   default._domainkey.<domain>   +short      # generic fallback, frequently empty
 ```
+
+⛔ **Never check `default._domainkey` alone.** It is empty on most real fleets, and a
+`default`-only check reports every domain as "missing DKIM" — which routes genuinely burned
+domains to "fix your DNS" and wastes a week republishing records that already exist. The script
+tries all four and reports which one resolved.
 
 Outputs: domain, spf_present, spf_strict, dkim_present, dmarc_present, dmarc_policy (none/quarantine/reject).
 
@@ -173,9 +214,12 @@ Feed the action items into the right skills:
 
 ### Spam placement
 - **>90% inbox** — Great. Ship more.
-- **80-90% inbox** — Acceptable.
-- **70-80% inbox** — Yellow. Look at spam-filter-details to see what's triggering.
-- **<70% inbox** — Red. Pause and fix auth + copy before sending more.
+- **85-90% inbox** — Healthy. This is the line a domain must clear to be considered good metal.
+- **70-84% inbox** — Degraded. Look at spam-filter-details to see what's triggering.
+- **<70% inbox** — Red, and a hard gate: do not attach this domain to a campaign. Pause and fix
+  auth + copy before sending more.
+
+Test with 100-300 senders. Smaller samples swing by double digits run to run.
 
 ### DMARC policies
 - **None** — Acceptable for first 2 weeks of a domain's life. After that, tighten.
@@ -183,23 +227,34 @@ Feed the action items into the right skills:
 - **Reject** — Strictest. Only use after 30+ days of clean `rua=` reports confirming all legitimate mail passes.
 
 ### Warmup reputation
-- Smartlead reports reputation as 0-100 internally. Higher is better.
-- Above 80: inbox is good to send from.
-- 50-80: keep warming, don't use for critical sends.
-- Below 50: don't send from this inbox — warmup peers aren't seeing it in their inboxes.
+- Smartlead reports reputation as 0-100. Higher is better.
+- **≥98%** — required before promoting a reserve inbox into a live campaign.
+- **80-98%** — sending is fine, but don't promote fresh reserves at this level.
+- **50-80%** — keep warming, don't use for critical sends.
+- **<50%** — don't send from this inbox; warmup peers aren't seeing it in their inboxes.
+
+⚠️ **Warmup switched OFF is not a reputation of zero — it is no reading at all.** An inbox with
+warmup off reports nothing, so it cannot be evaluated. Treat it as **held**: out of capacity, not
+attached to campaigns, reported for a human. Do not silently turn warmup back on to make a number
+appear — that rewrites the signal you are trying to measure.
 
 ## Common root causes
 
 - **SPF too lax** — `v=spf1 +all` whitelists everyone. Use `v=spf1 include:zapmail.com ~all` or similar.
 - **DKIM missing** — new domain, selector not published. Zapmail publishes at `default._domainkey` by default.
 - **DMARC alignment failure** — From-domain doesn't match SPF/DKIM domain. Usually a misconfigured reply-to or a 3rd-party sender.
-- **Too many inboxes per domain** — Gmail flags domains with >3-5 inboxes as suspicious. Keep it at 2/domain.
+- **Too many inboxes per domain** — Gmail flags domains with >3-5 inboxes as suspicious. Keep it at 2-3/domain.
+- **Judging a domain that is too young or too quiet** — under 30 days old or under 200 sends, the
+  numbers cannot distinguish a burned domain from an unlucky week. This is not a root cause; it is
+  the absence of evidence, and it is the single most common way a healthy domain gets killed.
 - **Aggressive warmup ramp** — Jumping from 5 to 40/day in one week = flag. Ramp over 2-4 weeks.
 - **Shared sending IP with spam traffic** — Zapmail/most providers use shared pools. If someone else on your IP spammed, you suffer. Not much to do except wait for pool rotation.
 
 ## What to do next
 
 **If any flag fired:** `/deliverability-incident-response` → triage decision tree for whatever was flagged (low reply rate, high bounce, blocked inbox, etc).
+
+**If a domain is confirmed burned:** `/inbox-lifecycle-manager` → the cancel/promote/buy decision, with the guards that stop you cancelling into a send shortfall.
 
 **If all clean:** next Monday, run this again. This audit is the Monday task in `/cold-email-weekly-rhythm`.
 
@@ -211,6 +266,7 @@ Feed the action items into the right skills:
 - `/zapmail-domain-setup-public` — fix DNS/auth issues at the domain provider
 - `/spam-word-checker` — check copy for spam-triggering phrases
 - `/deliverability-test-public` — lighter-weight SMTP vs Gmail vs Outlook reply/bounce comparison
+- `/inbox-lifecycle-manager` — acts on the verdict: cancel, promote reserves, plan the buy
 
 ## Scripts
 

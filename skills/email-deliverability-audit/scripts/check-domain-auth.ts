@@ -7,7 +7,15 @@
  *   npx tsx scripts/check-domain-auth.ts --domains=a.co,b.co --out=/tmp/audit/auth.csv
  *
  * CSV input must have a column named `domain` or `email` (domain extracted from email).
- * DKIM selector defaults to "default" (Zapmail convention). Override with --dkim-selector=XYZ.
+ *
+ * DKIM has NO single selector. This script tries every known selector and reports DKIM
+ * present if ANY of them resolves:
+ *   google._domainkey     TXT    — Google / Gmail-backed providers (the common one)
+ *   selector1._domainkey  CNAME  — Microsoft 365 (a TXT query here returns NOTHING)
+ *   selector2._domainkey  CNAME  — Microsoft 365, second key
+ *   default._domainkey    TXT    — generic fallback, frequently empty
+ * Checking `default` alone marks a healthy fleet "missing DKIM" and sends you off
+ * republishing records that already exist. Add your own with --dkim-selector=XYZ.
  */
 
 import { execSync } from "child_process";
@@ -24,16 +32,40 @@ function parseArgs() {
     csv: get("--from-csv"),
     domains: get("--domains"),
     out: get("--out") ?? "/tmp/audit/auth.csv",
-    dkimSelector: get("--dkim-selector") ?? "default",
+    dkimSelector: get("--dkim-selector"),
   };
 }
 
-function dig(name: string): string {
+function dig(name: string, type: "TXT" | "CNAME" = "TXT"): string {
   try {
-    return execSync(`dig TXT ${name} +short`, { timeout: 10000 }).toString().trim();
+    return execSync(`dig ${type} ${name} +short`, { timeout: 10000 }).toString().trim();
   } catch (err) {
     return "";
   }
+}
+
+// Ordered: most common first, so the reported selector is the one actually in use.
+const DKIM_SELECTORS: { selector: string; type: "TXT" | "CNAME" }[] = [
+  { selector: "google", type: "TXT" },
+  { selector: "selector1", type: "CNAME" },
+  { selector: "selector2", type: "CNAME" },
+  { selector: "default", type: "TXT" },
+];
+
+/** Returns the selector that resolved, or "" if none did. */
+function findDkim(domain: string, extraSelector?: string): string {
+  const candidates = extraSelector
+    ? [{ selector: extraSelector, type: "TXT" as const }, ...DKIM_SELECTORS]
+    : DKIM_SELECTORS;
+  for (const { selector, type } of candidates) {
+    const raw = dig(`${selector}._domainkey.${domain}`, type);
+    if (!raw) continue;
+    // A CNAME to the provider's key host is itself proof of publication — querying
+    // TXT at that name returns nothing even when DKIM is correctly configured.
+    if (type === "CNAME") return selector;
+    if (raw.includes("v=DKIM1") || raw.includes("p=")) return selector;
+  }
+  return "";
 }
 
 interface AuthRow {
@@ -49,9 +81,9 @@ interface AuthRow {
   notes: string;
 }
 
-function check(domain: string, dkimSelector: string): AuthRow {
+function check(domain: string, dkimSelector?: string): AuthRow {
   const spfRaw = dig(domain);
-  const dkimRaw = dig(`${dkimSelector}._domainkey.${domain}`);
+  const foundSelector = findDkim(domain, dkimSelector);
   const dmarcRaw = dig(`_dmarc.${domain}`);
 
   const spfMatches = spfRaw.split("\n").filter((l) => l.includes("v=spf1"));
@@ -59,7 +91,7 @@ function check(domain: string, dkimSelector: string): AuthRow {
   const spf_present = spf.length > 0;
   const spf_strict = spf.includes("-all");
 
-  const dkim_present = dkimRaw.includes("v=DKIM1") || dkimRaw.includes("p=");
+  const dkim_present = foundSelector.length > 0;
 
   const dmarcMatches = dmarcRaw.split("\n").filter((l) => l.includes("v=DMARC1"));
   const dmarc = dmarcMatches[0]?.replace(/^"|"$/g, "") ?? "";
@@ -70,7 +102,10 @@ function check(domain: string, dkimSelector: string): AuthRow {
   const notes: string[] = [];
   if (!spf_present) notes.push("SPF missing — add `v=spf1 include:<provider> ~all`");
   else if (!spf_strict) notes.push("SPF loose (~all or +all) — consider -all once confirmed");
-  if (!dkim_present) notes.push(`DKIM missing at ${dkimSelector}._domainkey`);
+  if (!dkim_present)
+    notes.push(
+      "DKIM missing — no record at google/selector1/selector2/default._domainkey"
+    );
   if (!dmarc_present) notes.push("DMARC missing — add `v=DMARC1; p=none; rua=mailto:...`");
   else if (dmarc_policy === "none") notes.push("DMARC policy=none — no enforcement yet");
 
@@ -80,7 +115,7 @@ function check(domain: string, dkimSelector: string): AuthRow {
     spf_strict,
     spf_record: spf,
     dkim_present,
-    dkim_selector: dkimSelector,
+    dkim_selector: foundSelector,
     dmarc_present,
     dmarc_policy,
     dmarc_record: dmarc,
