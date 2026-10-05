@@ -39,7 +39,19 @@ export async function fetchJson(url: string, options: RequestInit = {}): Promise
   // refused for 8+ minutes. So grow the wait past Retry-After (max of the two), cap at 5 min.
   const MAX = 10;
   for (let attempt = 0; attempt < MAX; attempt++) {
-    const resp = await fetch(url, opts);
+    // Cloudflare returns 524 at ~100s when the origin cannot finish; do not wait longer than that.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 110_000);
+    let resp: Response;
+    try {
+      resp = await fetch(url, { ...opts, signal: ctrl.signal });
+    } catch (e) {
+      clearTimeout(timer);
+      console.error(`  [timeout/network] retry ${attempt + 1}/${MAX}: ${String(e).slice(0, 80)}`);
+      await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 60_000)));
+      continue;
+    }
+    clearTimeout(timer);
     if (resp.status === 429 || resp.status >= 500) {
       const retryAfter = Number(resp.headers.get("retry-after")) || 0;
       const wait = Math.min(Math.max(retryAfter * 1000, 1000 * 2 ** attempt), 300_000) + Math.random() * 3000;
@@ -125,48 +137,87 @@ export interface DomainMetric {
   bounced: number;
 }
 
+/** Sub-clients on the account (empty array on a single-client account). */
+export async function listClients(): Promise<{ id: number; name?: string }[]> {
+  const json = await fetchJson(`${API_BASE}/client/?api_key=${API_KEY}`);
+  return Array.isArray(json) ? json : [];
+}
+
 /**
  * Live per-domain sent / replied / bounced for a date window.
- * This endpoint accepts a larger page size than the /email-accounts cap.
+ *
+ * Measured on a 14k-domain account: an ACCOUNT-WIDE page of 1000 never returns (Cloudflare
+ * 524 at ~125s, the origin cannot finish it); a page of 100 returns in ~19s; one sub-client
+ * at limit 1000 returns in ~1s. So: per client at 1000 when the account has sub-clients,
+ * account-wide at 100 otherwise. With `checkpoint`, each completed page is appended to a
+ * JSONL file and a re-run resumes from it.
  */
 export async function domainMetrics(
   startDate: string,
   endDate: string,
-  clientIds?: string
+  opts: { clientIds?: string[]; checkpoint?: string } = {}
 ): Promise<Map<string, DomainMetric>> {
   const out = new Map<string, DomainMetric>();
-  const pageSize = 1000;
-  let offset = 0;
-  for (;;) {
-    const params = new URLSearchParams({
-      api_key: API_KEY!,
-      start_date: startDate,
-      end_date: endDate,
-      full_data: "true",
-      limit: String(pageSize),
-      offset: String(offset),
-    });
-    if (clientIds) params.set("client_ids", clientIds);
-    const json = await fetchJson(
-      `${API_BASE}/analytics/mailbox/domain-wise-health-metrics?${params}`
-    );
-    const rows: any[] = json?.data?.domain_health_metrics ?? [];
-    if (rows.length === 0) break;
+  const add = (rows: any[]) => {
     for (const r of rows) {
       const domain = String(r.domain || "").toLowerCase();
       if (!domain) continue;
       const prev = out.get(domain);
-      const m: DomainMetric = {
+      out.set(domain, {
         domain,
         sent: Number(r.sent || 0) + (prev?.sent ?? 0),
         replied: Number(r.replied || 0) + (prev?.replied ?? 0),
         positive_replied: Number(r.positive_replied || 0) + (prev?.positive_replied ?? 0),
         bounced: Number(r.bounced || 0) + (prev?.bounced ?? 0),
-      };
-      out.set(domain, m);
+      });
     }
-    if (rows.length < pageSize) break;
-    offset += pageSize;
+  };
+
+  // scopes: one per sub-client (fast), or a single account-wide scope (slow, small pages)
+  const scopes: { client?: string; pageSize: number }[] = opts.clientIds?.length
+    ? opts.clientIds.map((c) => ({ client: c, pageSize: 1000 }))
+    : [{ pageSize: 100 }];
+
+  const done = new Set<string>();
+  const lastPage = new Set<string>(); // keys of pages that were the final page of their scope
+  if (opts.checkpoint && existsSync(opts.checkpoint)) {
+    for (const line of readFileSync(opts.checkpoint, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      const rec = JSON.parse(line);
+      done.add(rec.key);
+      if (rec.last) lastPage.add(rec.key);
+      add(rec.rows);
+    }
+    if (done.size) console.error(`  resumed metrics checkpoint: ${done.size} pages, ${out.size} domains`);
+  } else if (opts.checkpoint) {
+    mkdirSync(dirname(opts.checkpoint), { recursive: true });
+  }
+
+  let n = 0;
+  for (const scope of scopes) {
+    let offset = 0;
+    for (;;) {
+      const key = `${scope.client ?? "all"}:${offset}`;
+      if (done.has(key)) {
+        if (lastPage.has(key)) break;      // this scope finished in a previous run
+        offset += scope.pageSize; continue; // page already fetched, move on
+      }
+      const params = new URLSearchParams({
+        api_key: API_KEY!, start_date: startDate, end_date: endDate, full_data: "true",
+        limit: String(scope.pageSize), offset: String(offset),
+      });
+      if (scope.client) params.set("client_ids", scope.client);
+      const json = await fetchJson(`${API_BASE}/analytics/mailbox/domain-wise-health-metrics?${params}`);
+      const rows: any[] = json?.data?.domain_health_metrics ?? [];
+      add(rows);
+      const last = rows.length < scope.pageSize;
+      if (opts.checkpoint) appendFileSync(opts.checkpoint, JSON.stringify({ key, last, rows }) + "\n");
+      n++;
+      if (n % 25 === 0) console.error(`  ...metrics: ${n} pages, ${out.size} domains`);
+      if (last) break;
+      offset += scope.pageSize;
+      await new Promise((r) => setTimeout(r, 250));
+    }
   }
   return out;
 }

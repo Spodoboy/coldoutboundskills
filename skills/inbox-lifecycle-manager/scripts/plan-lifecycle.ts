@@ -20,7 +20,7 @@
  */
 import { unlinkSync } from "fs";
 import {
-  listAllInboxes, domainMetrics, domainOf, daysAgo, today,
+  listAllInboxes, domainMetrics, listClients, domainOf, daysAgo, today,
   writeCsv, parseFlag, hasFlag, InboxAccount,
 } from "./_lib";
 
@@ -138,15 +138,21 @@ async function main() {
   const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "2"));
 
   const ckpt = `${outDir}/inboxes.jsonl`;
-  if (hasFlag(args, "--fresh")) { try { unlinkSync(ckpt); } catch {} }
+  if (hasFlag(args, "--fresh")) for (const f of [ckpt, `${outDir}/metrics-7d.jsonl`, `${outDir}/metrics-14d.jsonl`]) { try { unlinkSync(f); } catch {} }
   console.log(`Pulling inbox inventory (checkpoint: ${ckpt})...`);
   const inboxes = await listAllInboxes(ckpt);
   console.log(`  ${inboxes.length} inboxes`);
 
+  // Per sub-client when the account has them (fast); account-wide in pages of 100 otherwise.
+  let scopeIds = clientIds ? clientIds.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+  if (!scopeIds) {
+    const clients = await listClients();
+    if (clients.length) { scopeIds = clients.map((c) => String(c.id)); console.log(`  ${clients.length} sub-clients; pulling metrics per client`); }
+  }
   console.log("Pulling live 7d + 14d domain metrics...");
   const [m7, m14] = await Promise.all([
-    domainMetrics(daysAgo(7), today(), clientIds),
-    domainMetrics(daysAgo(14), today(), clientIds),
+    domainMetrics(daysAgo(7), today(), { clientIds: scopeIds, checkpoint: `${outDir}/metrics-7d.jsonl` }),
+    domainMetrics(daysAgo(14), today(), { clientIds: scopeIds, checkpoint: `${outDir}/metrics-14d.jsonl` }),
   ]);
   console.log(`  ${m7.size} domains with 7d activity, ${m14.size} with 14d`);
 

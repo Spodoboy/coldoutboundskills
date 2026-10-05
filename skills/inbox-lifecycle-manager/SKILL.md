@@ -215,7 +215,9 @@ Measured on a ~20k-inbox account: the pull was refused for 8+ minutes straight w
 `Retry-After` kept saying 60s. The script checkpoints every page to `<out>/inboxes.jsonl`;
 if the run dies, **re-run the same command and it resumes** from the last complete page.
 Budget 20-40 minutes for the first pull on an account that size, run it when other sync jobs
-are idle, and pass `--fresh` when you deliberately want a new inventory.
+are idle, and pass `--fresh` when you deliberately want a new inventory. The metrics pull is
+checkpointed the same way (`metrics-7d.jsonl`, `metrics-14d.jsonl`) and runs per sub-client
+when the account has them, which is roughly 50x faster than one account-wide pull.
 
 ### Step 2 — Report
 
@@ -311,8 +313,9 @@ domain and its reputation are gone. Decide fast, and check the provider's revert
   *entire* history with no date parameter. Filter client-side on the sent date, or bounces from a
   completed campaign six months ago will drive this week's cancel list.
 - **Page size over 100.** Most Smartlead endpoints silently return zero rows above `limit=100`,
-  which reads as "no data" instead of an error. The domain-wise analytics endpoint is the
-  exception and accepts larger pages.
+  which reads as "no data" instead of an error. The domain-wise analytics endpoint *accepts*
+  larger pages, but an account-wide page of 1000 on a 14k-domain account never returns
+  (Cloudflare 524 after ~2 minutes: the origin cannot finish it). Scope to one client, or page at 100.
 - **Judging a domain that is not Active.** If an Insurance or Cancel domain shows sends, that is an
   infrastructure bug to report, not a deliverability verdict.
 
