@@ -209,6 +209,14 @@ warmup state, reputation, SMTP health), applies the ladder above, and writes:
 
 It calls no write endpoint. You can run it on someone else's account without risk.
 
+**Large accounts (5k+ inboxes).** The inbox inventory is the slow part: 100 per page, and
+Smartlead's rate limit is account-wide, so any other job on the same key eats your budget.
+Measured on a ~20k-inbox account: the pull was refused for 8+ minutes straight while
+`Retry-After` kept saying 60s. The script checkpoints every page to `<out>/inboxes.jsonl`;
+if the run dies, **re-run the same command and it resumes** from the last complete page.
+Budget 20-40 minutes for the first pull on an account that size, run it when other sync jobs
+are idle, and pass `--fresh` when you deliberately want a new inventory.
+
 ### Step 2 — Report
 
 Summarize for the human:
