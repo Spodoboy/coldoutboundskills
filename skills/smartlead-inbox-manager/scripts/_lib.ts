@@ -2,6 +2,8 @@
  * Shared utilities for smartlead-inbox-manager scripts.
  */
 
+import { readFileSync } from "fs";
+
 export const API_BASE = "https://server.smartlead.ai/api/v1";
 export const API_KEY = process.env.SMARTLEAD_API_KEY;
 
@@ -111,7 +113,6 @@ export async function selectInboxes(args: string[]): Promise<InboxAccount[]> {
 
   const csv = parseFlag(args, "--ids-from-csv");
   if (csv) {
-    const { readFileSync } = require("fs");
     const text = readFileSync(csv, "utf8");
     const lines = text.trim().split("\n");
     const header = lines[0].split(",");

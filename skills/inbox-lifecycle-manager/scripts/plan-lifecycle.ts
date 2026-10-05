@@ -18,6 +18,7 @@
  * Status is read from inbox tags: warmup | insurance | active | cancel.
  * Untagged inboxes that are attached and sending read as active.
  */
+import { unlinkSync } from "fs";
 import {
   listAllInboxes, domainMetrics, domainOf, daysAgo, today,
   writeCsv, parseFlag, hasFlag, InboxAccount,
@@ -137,7 +138,7 @@ async function main() {
   const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "2"));
 
   const ckpt = `${outDir}/inboxes.jsonl`;
-  if (hasFlag(args, "--fresh")) { try { require("fs").unlinkSync(ckpt); } catch {} }
+  if (hasFlag(args, "--fresh")) { try { unlinkSync(ckpt); } catch {} }
   console.log(`Pulling inbox inventory (checkpoint: ${ckpt})...`);
   const inboxes = await listAllInboxes(ckpt);
   console.log(`  ${inboxes.length} inboxes`);

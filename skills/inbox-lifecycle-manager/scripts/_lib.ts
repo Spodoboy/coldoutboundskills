@@ -4,6 +4,9 @@
  * READ-ONLY helpers. Nothing in this file writes to Smartlead.
  */
 
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
+
 export const API_BASE = "https://server.smartlead.ai/api/v1";
 export const API_KEY = process.env.SMARTLEAD_API_KEY;
 
@@ -80,8 +83,6 @@ export interface InboxAccount {
  * restart rather than a lost run. Delete the file to force a fresh pull.
  */
 export async function listAllInboxes(checkpoint?: string): Promise<InboxAccount[]> {
-  const { existsSync, readFileSync, appendFileSync, mkdirSync } = require("fs");
-  const { dirname } = require("path");
   const all: InboxAccount[] = [];
   const limit = 100; // hard cap: limit>100 silently returns 0 rows on this endpoint
   let offset = 0;
@@ -186,8 +187,6 @@ export function today(): string {
 }
 
 export function writeCsv(path: string, rows: Record<string, any>[]): void {
-  const { writeFileSync, mkdirSync } = require("fs");
-  const { dirname } = require("path");
   mkdirSync(dirname(path), { recursive: true });
   if (rows.length === 0) {
     writeFileSync(path, "");
@@ -204,7 +203,6 @@ export function writeCsv(path: string, rows: Record<string, any>[]): void {
 }
 
 export function readCsv(path: string): Record<string, string>[] {
-  const { readFileSync } = require("fs");
   const text = readFileSync(path, "utf8").trim();
   if (!text) return [];
   const lines = text.split("\n");

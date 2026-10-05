@@ -47,7 +47,7 @@ async function main() {
   let fail = 0;
   await runWithConcurrency(inboxes, 5, async (inbox, i) => {
     const existing = inbox.tags ?? [];
-    let newTags = existing
+    let newTags: { id?: number; name: string; color?: string }[] = existing
       .filter((t: any) => t.name !== removeTagArg)
       .map((t: any) => ({ id: t.id, name: t.name, color: t.color }));
     if (addName && !newTags.some((t: any) => t.name === addName)) {
