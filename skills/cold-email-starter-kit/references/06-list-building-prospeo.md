@@ -824,12 +824,11 @@ const filters: ProspeoSearchFilters = {
 Set `funding_date` to `90` / `180` / `270` / `365` for tighter or looser recency windows.
 Use `null` (or omit) to ignore recency and match any company currently at the given stage.
 
-## Existing Implementation
+## Working implementations in this repo
 
-The codebase has a full implementation at:
-- Service: `Desktop/Cursor Testing/src/services/prospeoSearch.ts`
-- Types: `Desktop/Cursor Testing/src/types/prospeoSearch.ts`
-- CLI: `Desktop/Cursor Testing/src/scripts/prospeoSearch.ts`
+- `/prospeo-full-export` — the search + paginated export scripts built on these filters
+- `/list-expander` `scripts/pull.ts` — the same filters, used for wide TAM pulls
+- `/list-builder` — orchestrates both as one lane of a larger list build
 
 ## Environment Variables
 

@@ -144,7 +144,7 @@ Pre-send checklist:
 ## When to use
 
 - AFTER list-building skills (`/prospeo-full-export`, `/blitz-list-builder`, `/google-maps-list-builder`, `/disco-like`)
-- AFTER email waterfall (`/email-waterfall`)
+- AFTER email finding (`/list-builder` Phase 5)
 - BEFORE Smartlead upload
 
 ## When NOT to use
@@ -168,7 +168,7 @@ Pre-send checklist:
 
 - `/icp-prompt-builder` — more surgical ICP fit scoring (AI per-company)
 - `/icp-onboarding` — produces the `client-profile.yaml` this skill checks against
-- `/email-waterfall` — run BEFORE this skill for verification coverage
+- `/list-builder` Phase 5 + MillionVerifier (`/cold-email-starter-kit`) — run BEFORE this skill for verification coverage
 
 ## The 1% rule alignment
 

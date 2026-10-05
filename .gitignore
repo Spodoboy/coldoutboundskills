@@ -19,3 +19,7 @@ dist/
 health-*.csv
 scorecard-*.md
 campaign-plan-*.md
+
+# Python bytecode
+__pycache__/
+*.pyc

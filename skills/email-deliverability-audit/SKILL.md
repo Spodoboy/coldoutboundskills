@@ -146,11 +146,9 @@ Output shows: what % lands in Inbox vs Spam vs Promotions, broken down by your s
 
 ### 5. Synthesize the report
 
-```bash
-npx tsx scripts/generate-report.ts --audit-dir=/tmp/audit --out=/tmp/audit/report.md
-```
-
-Produces a markdown report like:
+Read the three CSVs (`inboxes.csv`, `auth.csv`, `performance.csv`) plus the spam-test JSON if you
+ran one, and write the report by hand in this shape. There is no generator script; the synthesis
+is the judgment call, and the template below is what it should look like:
 
 ```
 # Deliverability Audit — 2026-04-17
@@ -243,7 +241,7 @@ appear — that rewrites the signal you are trying to measure.
 - **SPF too lax** — `v=spf1 +all` whitelists everyone. Use `v=spf1 include:zapmail.com ~all` or similar.
 - **DKIM missing** — new domain, selector not published. Zapmail publishes at `default._domainkey` by default.
 - **DMARC alignment failure** — From-domain doesn't match SPF/DKIM domain. Usually a misconfigured reply-to or a 3rd-party sender.
-- **Too many inboxes per domain** — Gmail flags domains with >3-5 inboxes as suspicious. Keep it at 2-3/domain.
+- **Too many inboxes per domain** — Gmail flags domains with >3-5 inboxes as suspicious. Keep it at 2/domain.
 - **Judging a domain that is too young or too quiet** — under 30 days old or under 200 sends, the
   numbers cannot distinguish a burned domain from an unlucky week. This is not a root cause; it is
   the absence of evidence, and it is the single most common way a healthy domain gets killed.
@@ -274,10 +272,7 @@ appear — that rewrites the signal you are trying to measure.
 - `scripts/check-domain-auth.ts` — dig-based SPF/DKIM/DMARC checks
 - `scripts/audit-performance.ts` — per-inbox sent / replies / bounces / rates from campaign analytics (applies the 1% rule)
 - `scripts/run-spam-test.ts` — create + poll + pull Smart Delivery test
-- `scripts/generate-report.ts` — synthesize all CSVs into markdown report
-- `scripts/_smart-delivery.ts` — shared Smart Delivery API wrapper
 
 ## References
 
-- `references/smart-delivery-api.md` — full endpoint reference for Smart Delivery
 - `references/dns-records.md` — SPF/DKIM/DMARC record templates + interpretation guide

@@ -31,12 +31,15 @@ export async function fetchJson(url: string, options: RequestInit = {}): Promise
     ...options,
     headers: { "User-Agent": UA, ...(options.headers ?? {}) },
   };
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // Smartlead rate limits are account-wide, so other jobs on the same key eat into the
+  // budget. Be patient: honor Retry-After, back off, and allow a sustained throttle to pass.
+  const MAX = 8;
+  for (let attempt = 0; attempt < MAX; attempt++) {
     const resp = await fetch(url, opts);
     if (resp.status === 429 || resp.status >= 500) {
       const retryAfter = Number(resp.headers.get("retry-after")) || 0;
-      const wait = retryAfter * 1000 || 1000 * 2 ** attempt;
-      console.error(`  [${resp.status}] retry ${attempt + 1}/5 in ${wait}ms`);
+      const wait = Math.min(retryAfter * 1000 || 1000 * 2 ** attempt, 120_000) + Math.random() * 2000;
+      console.error(`  [${resp.status}] retry ${attempt + 1}/${MAX} in ${Math.round(wait / 1000)}s`);
       await new Promise((r) => setTimeout(r, wait));
       continue;
     }
@@ -79,6 +82,8 @@ export async function listAllInboxes(): Promise<InboxAccount[]> {
     all.push(...batch);
     if (batch.length < limit) break;
     offset += limit;
+    if (offset % 2000 === 0) console.error(`  ...${all.length} inboxes so far`);
+    await new Promise((r) => setTimeout(r, 350)); // pace: back-to-back pages trip the limiter
   }
   return all;
 }

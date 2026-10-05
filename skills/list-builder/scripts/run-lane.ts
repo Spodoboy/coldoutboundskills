@@ -23,7 +23,7 @@
  *
  * lane.json shape (all optional except name/client_slug/prompt/emp band):
  * {
- *   "name": "hedge", "client_slug": "autoworklet",
+ *   "name": "hedge", "client_slug": "acme",
  *   "prompt": "/abs/path/prompt.txt",
  *   "emp_min": 10, "emp_max": 500,
  *   "states": ["New York", ...],            // omit for US-wide

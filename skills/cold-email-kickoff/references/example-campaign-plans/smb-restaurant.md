@@ -42,7 +42,7 @@ Recommended flow:
 1. `/google-maps-list-builder` → scrape 1,000 multi-location restaurants in top 50 metros with 100+ reviews + 4+ stars
 2. `/icp-prompt-builder` (required) → qualify a 50-sample (filter out chains, single-locations, 3-star places)
 3. `/blitz-list-builder` → find owner contacts at each remaining restaurant
-4. `/email-waterfall` → fill missing emails
+4. `/list-builder` (Phase 5, emails) → fill missing emails
 5. `/list-quality-scorecard` → grade
 6. `/campaign-copywriting` → write Campaign #1 (Google Review Signal)
 8. `/smartlead-campaign-upload-public` → DRAFT, review, Start manually

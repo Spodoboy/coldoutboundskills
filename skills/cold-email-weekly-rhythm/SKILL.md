@@ -48,7 +48,7 @@ Open Google Calendar / Outlook / Apple Reminders / whatever you actually look at
 **Action:**
 
 - If any campaign failed the 1% rule: run `/deliverability-incident-response` → triage decision tree
-- If bounce rate spiked above 2%: pause the offending campaign immediately, then triage
+- If bounce rate is above 2%: triage via `/deliverability-incident-response`. Above 3% (the autopause line): pause the offending campaign immediately, then triage
 - If everything clean: log the check in a weekly journal, close the tab
 
 ---

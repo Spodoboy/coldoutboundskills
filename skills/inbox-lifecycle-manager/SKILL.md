@@ -160,7 +160,7 @@ Then:
 ```
 capacity_short   = (goal * 1.5) - (active + insurance capacity, post-promotion)
 inboxes_to_buy   = ceil(capacity_short / 30)
-domains_to_buy   = ceil(inboxes_to_buy / inboxes_per_domain)     # typically 3
+domains_to_buy   = ceil(inboxes_to_buy / inboxes_per_domain)     # 2 per domain
 ```
 
 Express the ask to a human in **emails/day of capacity**, not in domain count — "we are 900/day
@@ -178,9 +178,9 @@ the buy a month before you need the sends.
 |---|---|
 | Inbox subscription | $2.00-$2.60 / inbox / month |
 | Domain registration | ~$10-12 / year (cap what you will pay; cheap TLDs are fine for sending) |
-| A 3-inbox domain | ~$6-8 / month, ~90 sends/day, ~2,700 sends/month |
+| A 2-inbox domain | ~$4-5 / month, ~60 sends/day, ~1,800 sends/month |
 
-At 1% reply that is ~27 replies/month from a $7 domain. At 0.2% it is ~5. The cancel line is not
+At 1% reply that is ~18 replies/month from a $5 domain. At 0.2% it is ~4. The cancel line is not
 an aesthetic judgment — it is the point where the subscription stops paying for itself.
 
 **Already dead, do not pay to cancel carefully:** a domain whose warmup is off *and* whose SMTP

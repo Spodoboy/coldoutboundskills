@@ -1,6 +1,6 @@
 ---
 name: google-maps-list-builder
-description: Scrape Google Maps for local businesses by category and location, output CSV ready for cold email enrichment. Best for SMB campaigns targeting restaurants, clinics, gyms, salons, contractors, etc. Uses RapidAPI Maps Data API. Output feeds directly into /blitz-list-builder (to find owner contacts) or /email-waterfall (if you have names already).
+description: Scrape Google Maps for local businesses by category and location, output CSV ready for cold email enrichment. Best for SMB campaigns targeting restaurants, clinics, gyms, salons, contractors, etc. Uses RapidAPI Maps Data API. Output feeds directly into /blitz-list-builder (to find owner contacts) or //list-builder Phase 5 (if you have names already).
 ---
 
 # Google Maps List Builder
@@ -14,7 +14,7 @@ Google Maps gives you COMPANIES (name, domain, phone, address, ratings). It does
 1. Run this skill → CSV of businesses with `company_domain`
 2. **Run `/icp-prompt-builder` on a sample of 50** — tune a qualification prompt to filter out bad fits before paying for downstream enrichment
 3. Run `/blitz-list-builder` with the filtered CSV → adds owners/managers to each business
-4. Run `/email-waterfall` → fills in missing emails
+4. Run `/list-builder` (Phase 5, emails) → fills in missing emails
 5. Run `/cold-email-starter-kit`'s `smartlead-add-leads.ts` → upload to Smartlead
 
 This skill is only the first step.
@@ -755,7 +755,7 @@ Each result includes:
 
 **Run `/icp-prompt-builder`** on a 50-business sample (required step above). Then `/blitz-list-builder` with the filtered domains to find owner contacts — Google Maps returns businesses, not people.
 
-After owner discovery: `/email-waterfall` to fill missing emails, then `/list-quality-scorecard` to grade.
+After owner discovery: `/list-builder` (Phase 5, emails) to fill missing emails, then `/list-quality-scorecard` to grade.
 
 **Or wait:** if your scrape returned <200 businesses, your query + location is too narrow. Widen before proceeding.
 
@@ -763,5 +763,5 @@ After owner discovery: `/email-waterfall` to fill missing emails, then `/list-qu
 
 - `/icp-prompt-builder` — required qualification pass
 - `/blitz-list-builder` — find owner contacts at each business
-- `/email-waterfall` — fill missing emails
+- `/list-builder` (Phase 5, emails) — fill missing emails
 - `/list-quality-scorecard` — grade the final list

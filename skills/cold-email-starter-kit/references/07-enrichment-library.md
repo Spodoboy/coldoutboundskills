@@ -202,7 +202,7 @@ Never pay for enrichment you can't directly trace to a reply-rate lift in your d
 
 ## Cost efficiency tip
 
-Always run enrichment AFTER email finding. Enriching leads without valid emails wastes API credits. The `email-waterfall` pattern (check cache → find email → enrich valid rows only) is standard.
+Always run enrichment AFTER email finding. Enriching leads without valid emails wastes API credits. The email-waterfall pattern (check cache → find email → enrich valid rows only) is standard; `/list-builder` Phase 5 implements it.
 
 ---
 
