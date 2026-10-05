@@ -32,13 +32,14 @@ export async function fetchJson(url: string, options: RequestInit = {}): Promise
     headers: { "User-Agent": UA, ...(options.headers ?? {}) },
   };
   // Smartlead rate limits are account-wide, so other jobs on the same key eat into the
-  // budget. Be patient: honor Retry-After, back off, and allow a sustained throttle to pass.
-  const MAX = 8;
+  // budget. Measured on a ~20k-inbox account: Retry-After said 60s while the key stayed
+  // refused for 8+ minutes. So grow the wait past Retry-After (max of the two), cap at 5 min.
+  const MAX = 10;
   for (let attempt = 0; attempt < MAX; attempt++) {
     const resp = await fetch(url, opts);
     if (resp.status === 429 || resp.status >= 500) {
       const retryAfter = Number(resp.headers.get("retry-after")) || 0;
-      const wait = Math.min(retryAfter * 1000 || 1000 * 2 ** attempt, 120_000) + Math.random() * 2000;
+      const wait = Math.min(Math.max(retryAfter * 1000, 1000 * 2 ** attempt), 300_000) + Math.random() * 3000;
       console.error(`  [${resp.status}] retry ${attempt + 1}/${MAX} in ${Math.round(wait / 1000)}s`);
       await new Promise((r) => setTimeout(r, wait));
       continue;
@@ -70,21 +71,48 @@ export interface InboxAccount {
   [key: string]: any;
 }
 
-/** Page every inbox on the account. NEVER stop early on a short page mid-run. */
-export async function listAllInboxes(): Promise<InboxAccount[]> {
+/**
+ * Page every inbox on the account. NEVER stop early on a short page mid-run.
+ *
+ * With `checkpoint`, every page is appended to that JSONL file as it arrives and a re-run
+ * resumes from the last complete page instead of starting over. On large accounts the
+ * pull can die mid-way to an account-wide 429 storm; the checkpoint turns that into a
+ * restart rather than a lost run. Delete the file to force a fresh pull.
+ */
+export async function listAllInboxes(checkpoint?: string): Promise<InboxAccount[]> {
+  const { existsSync, readFileSync, appendFileSync, mkdirSync } = require("fs");
+  const { dirname } = require("path");
   const all: InboxAccount[] = [];
   const limit = 100; // hard cap: limit>100 silently returns 0 rows on this endpoint
   let offset = 0;
+  let complete = false;
+
+  if (checkpoint && existsSync(checkpoint)) {
+    for (const line of readFileSync(checkpoint, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      const rec = JSON.parse(line);
+      if (rec.done) { complete = true; break; }
+      all.push(...rec.rows);
+      offset = rec.offset + limit;
+    }
+    console.error(`  resumed from checkpoint: ${all.length} inboxes${complete ? " (complete)" : `, continuing at offset ${offset}`}`);
+    if (complete) return all;
+  } else if (checkpoint) {
+    mkdirSync(dirname(checkpoint), { recursive: true });
+  }
+
   for (;;) {
     const url = `${API_BASE}/email-accounts?api_key=${API_KEY}&offset=${offset}&limit=${limit}`;
     const batch: InboxAccount[] = await fetchJson(url);
     if (!Array.isArray(batch) || batch.length === 0) break;
     all.push(...batch);
+    if (checkpoint) appendFileSync(checkpoint, JSON.stringify({ offset, rows: batch }) + "\n");
     if (batch.length < limit) break;
     offset += limit;
     if (offset % 2000 === 0) console.error(`  ...${all.length} inboxes so far`);
     await new Promise((r) => setTimeout(r, 350)); // pace: back-to-back pages trip the limiter
   }
+  if (checkpoint) appendFileSync(checkpoint, JSON.stringify({ done: true, total: all.length }) + "\n");
   return all;
 }
 

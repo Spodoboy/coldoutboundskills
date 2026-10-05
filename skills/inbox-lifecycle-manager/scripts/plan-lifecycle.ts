@@ -10,6 +10,10 @@
  *     --client-ids=1,2      scope to sub-clients (default: whole account)
  *     --inboxes-per-domain=2    for the buy math (default 2)
  *     --snapshot            also write snapshot.csv of current per-domain state
+ *     --fresh               ignore <out>/inboxes.jsonl and re-pull the inventory
+ *
+ * The inbox pull is checkpointed to <out>/inboxes.jsonl. If it dies mid-way (large accounts
+ * hit account-wide 429 storms), re-run the SAME command and it resumes where it stopped.
  *
  * Status is read from inbox tags: warmup | insurance | active | cancel.
  * Untagged inboxes that are attached and sending read as active.
@@ -132,8 +136,10 @@ async function main() {
   const clientIds = parseFlag(args, "--client-ids");
   const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "2"));
 
-  console.log("Pulling inbox inventory...");
-  const inboxes = await listAllInboxes();
+  const ckpt = `${outDir}/inboxes.jsonl`;
+  if (hasFlag(args, "--fresh")) { try { require("fs").unlinkSync(ckpt); } catch {} }
+  console.log(`Pulling inbox inventory (checkpoint: ${ckpt})...`);
+  const inboxes = await listAllInboxes(ckpt);
   console.log(`  ${inboxes.length} inboxes`);
 
   console.log("Pulling live 7d + 14d domain metrics...");
