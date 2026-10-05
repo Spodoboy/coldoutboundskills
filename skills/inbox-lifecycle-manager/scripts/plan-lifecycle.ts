@@ -5,7 +5,8 @@
  * snapshot.csv — the pre-state you need for a clean rollback.
  *
  *   npx tsx plan-lifecycle.ts --goal=2000 --out=./lifecycle-2026-09-29 [--snapshot]
- *     --goal=N              daily send goal, emails/day (required)
+ *     --goal=N              daily send goal, emails/day. Omit on a multi-client / agency account:
+ *                           you get verdicts only, and no capacity plan (one goal cannot span clients)
  *     --out=DIR             output directory (default ./lifecycle-<today>)
  *     --client-ids=1,2      scope to sub-clients (default: whole account)
  *     --inboxes-per-domain=2    for the buy math (default 2)
@@ -56,14 +57,16 @@ interface DomainRow {
   reason: string;
 }
 
-function statusOf(inboxes: InboxAccount[]): { status: string; all: string[] } {
+function statusOf(inboxes: InboxAccount[], sentInWindow: number): { status: string; all: string[] } {
   const seen = new Set<string>();
   for (const ib of inboxes) {
     const tags = (ib.tags ?? []).map((t) => String(t.name || "").toLowerCase());
     const hit = STATUS_RANK.find((s) => tags.includes(s));
-    // Untagged inbox: treat warmup-on as insurance, warmup-off as active.
+    // Untagged inbox: what it DID beats what its warmup switch says. Sending in the window
+    // means active; idle with warmup on means it is being held warm (insurance); idle with
+    // warmup off reads as active so the judge can call it dead or data-starved.
     const warmupOn = String(ib.warmup_details?.status || "").toUpperCase() === "ACTIVE";
-    seen.add(hit ?? (warmupOn ? "insurance" : "active"));
+    seen.add(hit ?? (sentInWindow > 0 ? "active" : warmupOn ? "insurance" : "active"));
   }
   // Aggregate by RESTRICTIVENESS, never alphabetical min().
   const status = STATUS_RANK.slice().reverse().find((s) => seen.has(s)) ?? "active";
@@ -105,8 +108,8 @@ function judge(r: DomainRow): { verdict: string; reason: string } {
     return { verdict: "TOO_YOUNG", reason: "age unresolvable; fail closed, never cancel" };
   if ((r.age_days as number) < MIN_AGE_DAYS)
     return { verdict: "TOO_YOUNG", reason: `${r.age_days}d old, floor is ${MIN_AGE_DAYS}d` };
-  if (r.warmup_off && !r.smtp_ok)
-    return { verdict: "ALREADY_DEAD", reason: "warmup off AND SMTP failing; not sending at all" };
+  if (r.warmup_off && !r.smtp_ok && r.sent_14d === 0)
+    return { verdict: "ALREADY_DEAD", reason: "warmup off, SMTP failing, zero sends in 14d; cancel the subscription, nothing to swap" };
   if (r.warmup_off && r.status !== "active")
     return { verdict: "HELD", reason: "warmup off; reputation unreadable, hold from promotion" };
   if (r.sent < MIN_SENDS_REPLY)
@@ -132,7 +135,8 @@ function judge(r: DomainRow): { verdict: string; reason: string } {
 async function main() {
   const args = process.argv.slice(2);
   const goal = Number(parseFlag(args, "--goal", "0"));
-  if (!goal) { console.error("Required: --goal=<emails per day>"); process.exit(1); }
+  const verdictsOnly = !goal;
+  if (verdictsOnly) console.log("No --goal given: verdicts only, no promote/demote/buy plan (right for multi-client accounts).");
   const outDir = parseFlag(args, "--out", `./lifecycle-${today()}`)!;
   const clientIds = parseFlag(args, "--client-ids");
   const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "2"));
@@ -166,9 +170,9 @@ async function main() {
 
   const rows: DomainRow[] = [];
   for (const [domain, ibs] of byDomain) {
-    const { status, all } = statusOf(ibs);
     const a = m7.get(domain) ?? { domain, sent: 0, replied: 0, positive_replied: 0, bounced: 0 };
     const b = m14.get(domain) ?? { domain, sent: 0, replied: 0, positive_replied: 0, bounced: 0 };
+    const { status, all } = statusOf(ibs, b.sent);
     // Prefer the 7d window; fall back to 14d only when 7d is under the send floor.
     const use7 = a.sent >= MIN_SENDS_REPLY;
     const w = use7 ? a : b;
@@ -197,6 +201,9 @@ async function main() {
   }
 
   // ---- capacity, promote, demote, buy ---------------------------------------
+  const actions: Record<string, any>[] = [];
+  let cap = 0, insuranceCap = 0, shortfall = 0, inboxesToBuy = 0, domainsToBuy = 0;
+  if (!verdictsOnly) {
   const activeCap = rows.filter((r) => r.status === "active" && r.verdict !== "BURNED")
     .reduce((s, r) => s + r.capacity_per_day, 0);
   const insuranceRows = rows.filter(
@@ -206,15 +213,25 @@ async function main() {
   ).sort((a, b) => Number(b.age_days || 0) - Number(a.age_days || 0)); // OLDEST first
 
   const burned = rows.filter((r) => r.verdict === "BURNED");
-  const actions: Record<string, any>[] = [];
 
-  let cap = activeCap;
+  cap = activeCap;
   let reserve = [...insuranceRows];
 
   // Cancel a burned domain only if a reserve can replace its capacity.
   // activeCap above already EXCLUDES burned domains, so a cancel costs nothing more here
   // and a kept-below-threshold domain (still sending) has to be added back in.
+  // Three outcomes per burned domain:
+  //   over goal even without it  -> CANCEL, no swap needed
+  //   a reserve can replace it   -> CANCEL + PROMOTE the oldest eligible reserve
+  //   neither                    -> KEEP_BELOW_THRESHOLD: buy first, cancel next week
+  // Note activeCap already excludes burned domains, so "cap" here is capacity WITHOUT them.
   for (const r of burned) {
+    const stillOverGoalWithoutIt = cap >= goal;
+    if (stillOverGoalWithoutIt) {
+      actions.push({ domain: r.domain, action: "CANCEL", from: r.status, to: "cancel",
+        capacity_per_day: r.capacity_per_day, verdict: r.verdict, reason: `${r.reason}; capacity stays at/above goal without it` });
+      continue;
+    }
     const swap = reserve.shift();
     if (swap) {
       actions.push({ domain: r.domain, action: "CANCEL", from: r.status, to: "cancel",
@@ -225,7 +242,7 @@ async function main() {
       cap += swap.capacity_per_day;
     } else {
       r.verdict = "KEEP_BELOW_THRESHOLD";
-      r.reason += " — no reserve to swap in; BUY FIRST, cancel next week";
+      r.reason += " — cancelling would drop capacity under goal and no reserve can replace it; BUY FIRST, cancel next week";
       if (r.status === "active") cap += r.capacity_per_day;
     }
   }
@@ -254,10 +271,11 @@ async function main() {
     }
   }
 
-  const insuranceCap = reserve.reduce((s, r) => s + r.capacity_per_day, 0);
-  const shortfall = Math.max(0, goal * (1 + INSURANCE_RATIO) - (cap + insuranceCap));
-  const inboxesToBuy = Math.ceil(shortfall / 30);
-  const domainsToBuy = Math.ceil(inboxesToBuy / perDomain);
+  insuranceCap = reserve.reduce((s, r) => s + r.capacity_per_day, 0);
+  shortfall = Math.max(0, goal * (1 + INSURANCE_RATIO) - (cap + insuranceCap));
+  inboxesToBuy = Math.ceil(shortfall / 30);
+  domainsToBuy = Math.ceil(inboxesToBuy / perDomain);
+  } // end capacity plan
 
   writeCsv(`${outDir}/plan.csv`, rows.sort((a, b) => b.sent - a.sent) as any);
   writeCsv(`${outDir}/actions.csv`, actions);
@@ -273,8 +291,8 @@ async function main() {
   console.log(`
 === Lifecycle plan ${today()} ===
 Domains:            ${rows.length}   (${inboxes.length} inboxes)
-Goal:               ${goal}/day     Active capacity after plan: ${cap}/day (${Math.round(cap / goal * 100)}%)
-Insurance reserve:  ${insuranceCap}/day   (target ${goal * INSURANCE_RATIO}/day)
+${verdictsOnly ? "Mode:               verdicts only (no --goal)" : `Goal:               ${goal}/day     Active capacity after plan: ${cap}/day (${Math.round(cap / goal * 100)}%)
+Insurance reserve:  ${insuranceCap}/day   (target ${goal * INSURANCE_RATIO}/day)`}
 
 Verdicts
   HEALTHY                    ${count("HEALTHY")}
@@ -287,8 +305,8 @@ Verdicts
   HELD (warmup off)          ${count("HELD")}
   ALREADY_DEAD               ${count("ALREADY_DEAD")}
 
-Actions: ${actions.filter(a => a.action === "CANCEL").length} cancel, ${actions.filter(a => a.action === "PROMOTE").length} promote, ${actions.filter(a => a.action === "DEMOTE").length} demote
-Buy:     ${shortfall > 0 ? `${shortfall}/day short -> ${inboxesToBuy} inboxes (~${domainsToBuy} domains)` : "nothing"}
+${verdictsOnly ? "Actions: none planned (pass --goal for a cancel/promote/buy plan on a single-program account)" : `Actions: ${actions.filter(a => a.action === "CANCEL").length} cancel, ${actions.filter(a => a.action === "PROMOTE").length} promote, ${actions.filter(a => a.action === "DEMOTE").length} demote
+Buy:     ${shortfall > 0 ? `${shortfall}/day short -> ${inboxesToBuy} inboxes (~${domainsToBuy} domains)` : "nothing"}`}
 
 Wrote ${outDir}/plan.csv and ${outDir}/actions.csv
 NOTHING WAS CHANGED. Review, get an explicit yes, then run apply-lifecycle.ts.

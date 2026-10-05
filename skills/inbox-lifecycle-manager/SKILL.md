@@ -100,8 +100,11 @@ G4. reply_rate >= 1.0%?
 
 G5. reply_rate < 1.0% (or 0 replies on >= 150 sends), age >= 30d, bounce not the story?
       -> CANCEL CANDIDATE. The domain has had a fair sample and did not reply. It is burned.
-         BUT: only cancel if you have an Insurance domain to swap in, or you are deliberately
-         shrinking. Otherwise -> KEEP_BELOW_THRESHOLD, flagged, and buy replacements first.
+         Then one of three:
+           still at/above goal without it  -> CANCEL, no swap needed
+           an Insurance domain can replace it -> CANCEL + PROMOTE the oldest eligible reserve
+           neither                          -> KEEP_BELOW_THRESHOLD: buy first, cancel next week.
+         Cancelling into a shortfall trades a bad reply rate for no sends at all.
 ```
 
 ### The numbers, and where they come from
@@ -194,7 +197,20 @@ connection fails is not sending anything. Cancel the subscription and move on; i
 
 ```bash
 npx tsx scripts/plan-lifecycle.ts --goal=2000 --out=./lifecycle-$(date +%F)
+# multi-client / agency account: omit --goal and you get verdicts only
+npx tsx scripts/plan-lifecycle.ts --out=./lifecycle-$(date +%F)
 ```
+
+**One goal, one sending program.** The capacity, promote/demote and buy math assume the whole
+account is one program with one daily target. On an agency account with sub-clients that math is
+meaningless (and the inbox list cannot be attributed to clients), so omit `--goal`: the verdict
+ladder still runs per domain and is the useful half there. Measured on a 402-client, 39,829-inbox
+account the full pull took about two hours, with roughly one 429 per metrics page.
+
+**Untagged inboxes.** When an inbox carries no status tag the planner infers one: sent in the
+window means `active`; idle with warmup on means `insurance`; idle with warmup off is treated as
+`active` so the judge can call it dead or data-starved. Tags always win. Tag your fleet; the
+inference is a fallback, not a convention.
 
 ⛔ **Always pull live.** Any cached or mirrored "last 7 days" column in your own database goes
 stale silently and you will never notice — the plan just quietly starts condemning healthy
@@ -257,6 +273,11 @@ npx tsx scripts/apply-lifecycle.ts --actions=./lifecycle-$(date +%F)/actions.csv
 
 Without `--apply` the apply script is a dry run: it prints exactly what it would change and exits.
 Run the dry run every single time and read the counts before you trust them.
+
+The apply script changes **tags only**. Two follow-ups belong to `/smartlead-inbox-manager` and
+are not optional: every domain you just tagged `cancel` gets **warmup switched off**
+(`set-warmup.ts --mode=disable --domain=...`), and every domain promoted to `active` gets its
+warmup turned down to your sending ramp. A cancelled domain still warming is still spending.
 
 Provider cancellations are **not** in this script on purpose. Do them deliberately, in batches you
 can see, after the tag changes have settled. See the cancellation rules below.

@@ -85,8 +85,11 @@ R4. Isolation: send the same copy from a known-good control fleet.
 
 --- Final gate on every BURNED verdict ----------------------------------------------
 
-C1. Is there an Insurance domain to swap in, or are we deliberately shrinking?
-      YES -> CANCEL.
+C1. Does active capacity stay at or above goal without this domain?
+      YES -> CANCEL. No swap needed.
+      NO  -> C2
+C2. Is there an eligible Insurance domain to swap in (not Warmup, age >= 30d, reputation >= 98%)?
+      YES -> CANCEL + PROMOTE the oldest eligible reserve.
       NO  -> KEEP_BELOW_THRESHOLD. Flag it, buy replacements, cancel next week.
              Cancelling into a shortfall trades a bad reply rate for no sends at all.
 ```
