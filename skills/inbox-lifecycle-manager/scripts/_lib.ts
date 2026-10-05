@@ -29,7 +29,7 @@ export function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
 }
 
-export async function fetchJson(url: string, options: RequestInit = {}): Promise<any> {
+export async function fetchJson(url: string, options: RequestInit = {}, maxAttempts = 10): Promise<any> {
   const opts: RequestInit = {
     ...options,
     headers: { "User-Agent": UA, ...(options.headers ?? {}) },
@@ -37,7 +37,7 @@ export async function fetchJson(url: string, options: RequestInit = {}): Promise
   // Smartlead rate limits are account-wide, so other jobs on the same key eat into the
   // budget. Measured on a ~20k-inbox account: Retry-After said 60s while the key stayed
   // refused for 8+ minutes. So grow the wait past Retry-After (max of the two), cap at 5 min.
-  const MAX = 10;
+  const MAX = maxAttempts;
   for (let attempt = 0; attempt < MAX; attempt++) {
     // Cloudflare returns 524 at ~100s when the origin cannot finish; do not wait longer than that.
     const ctrl = new AbortController();
@@ -207,7 +207,17 @@ export async function domainMetrics(
         limit: String(scope.pageSize), offset: String(offset),
       });
       if (scope.client) params.set("client_ids", scope.client);
-      const json = await fetchJson(`${API_BASE}/analytics/mailbox/domain-wise-health-metrics?${params}`);
+      let json: any;
+      try {
+        // A big client can time out even at 1000/page. Give it 3 tries, then shrink the page.
+        json = await fetchJson(`${API_BASE}/analytics/mailbox/domain-wise-health-metrics?${params}`, {}, scope.pageSize > 100 ? 3 : 10);
+      } catch (e) {
+        if (scope.pageSize > 100) {
+          console.error(`  scope ${scope.client ?? "all"}: ${scope.pageSize}/page keeps failing, retrying at 100/page`);
+          scope.pageSize = 100; offset = 0; continue;
+        }
+        throw e;
+      }
       const rows: any[] = json?.data?.domain_health_metrics ?? [];
       add(rows);
       const last = rows.length < scope.pageSize;
