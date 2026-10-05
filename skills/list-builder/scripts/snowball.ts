@@ -52,7 +52,7 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0,
 // counts as swept ONLY when a "judged" entry exists — so a round that crashed
 // between pull and judge re-pulls (free within 30d) instead of being skipped as
 // "done". OLD single-phase entries (no `phase` field) are treated as judged for
-// backward compatibility with existing donut ledgers.
+// backward compatibility with ledgers written by earlier versions.
 type Ledger = { norm: string; sha: string; total_count?: number | null; pulled_rows?: number; at: string; phase?: "pulled" | "judged"; routed?: string };
 function ledgerRead(): Ledger[] {
   if (!existsSync(ledgerPath)) return [];

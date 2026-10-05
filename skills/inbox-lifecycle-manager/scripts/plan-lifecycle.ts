@@ -8,7 +8,7 @@
  *     --goal=N              daily send goal, emails/day (required)
  *     --out=DIR             output directory (default ./lifecycle-<today>)
  *     --client-ids=1,2      scope to sub-clients (default: whole account)
- *     --inboxes-per-domain=3    for the buy math (default 3)
+ *     --inboxes-per-domain=2    for the buy math (default 2)
  *     --snapshot            also write snapshot.csv of current per-domain state
  *
  * Status is read from inbox tags: warmup | insurance | active | cancel.
@@ -130,7 +130,7 @@ async function main() {
   if (!goal) { console.error("Required: --goal=<emails per day>"); process.exit(1); }
   const outDir = parseFlag(args, "--out", `./lifecycle-${today()}`)!;
   const clientIds = parseFlag(args, "--client-ids");
-  const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "3"));
+  const perDomain = Number(parseFlag(args, "--inboxes-per-domain", "2"));
 
   console.log("Pulling inbox inventory...");
   const inboxes = await listAllInboxes();

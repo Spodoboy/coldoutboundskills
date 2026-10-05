@@ -206,7 +206,7 @@ Once comfortable, wrap it in a cron or use Claude Code's `/loop` skill to run da
 
 You need a way to pick the next target each day. Options:
 - Maintain a `targets.txt` list and pop one per day
-- Let Claude pick based on TAM research (see `/GEX:Full-TAM-Waterfall` for inspiration)
+- Let Claude pick based on TAM research (see `/list-builder` and `/list-expander`)
 - Rotate through a list of competitors/lookalikes
 
 ## State files (local JSON, no database)
@@ -261,7 +261,6 @@ Total: **~$6-10 per campaign** to reach 300-500 valid emails.
 - `scripts/phase-prospeo.ts` — Prospeo paginated search
 - `scripts/phase-enrich.ts` — email waterfall + description enrichment + MillionVerifier
 - `scripts/phase-upload.ts` — Smartlead campaign creation + upload
-- `scripts/_lib.ts` — shared API helpers
 
 ## References
 

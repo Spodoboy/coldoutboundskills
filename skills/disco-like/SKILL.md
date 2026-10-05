@@ -97,7 +97,7 @@ Before pulling 5,000 companies, run DiscoLike on a small sample (50-100), then i
 3. `/icp-prompt-builder` → score the sample, tune ICP prompt
 4. If sample quality is high, scale: `/disco-like ... --limit=5000 --out=full.csv`
 5. `/blitz-list-builder --domains-file=full.csv` → find decision-makers at each
-6. `/email-waterfall` → fill in emails
+6. `/list-builder` (Phase 5, emails) → fill in emails
 7. Upload to Smartlead
 
 ## API details (reference)
@@ -134,8 +134,6 @@ Before pulling 5,000 companies, run DiscoLike on a small sample (50-100), then i
 ## Scripts
 
 - `scripts/discover.ts` — main search + CSV output
-- `scripts/count.ts` — pre-check universe size before paying
-- `scripts/bizdata.ts` — single-domain lookup
 
 ## What to do next
 
@@ -150,5 +148,5 @@ Before pulling 5,000 companies, run DiscoLike on a small sample (50-100), then i
 - `/icp-onboarding` — defines the seed domains you'll use
 - `/icp-prompt-builder` — quality-check the first 50 results before scaling
 - `/blitz-list-builder` — chain to find contacts at each discovered company
-- `/email-waterfall` — fill missing emails after Blitz
+- `/list-builder` (Phase 5, emails) — fill missing emails after Blitz
 - `/cold-email-starter-kit` → `06-list-building-prospeo.md` for broader list-building patterns

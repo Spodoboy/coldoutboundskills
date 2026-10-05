@@ -99,5 +99,5 @@ npm run competitor-engagers -- --check-auth
 
 - `/icp-prompt-builder` — required filter pass on this skill's output
 - `/list-quality-scorecard` — grade the filtered list
-- `/email-waterfall` — if LinkedIn engagement doesn't include emails
+- `/list-builder` (Phase 5, emails) — if LinkedIn engagement doesn't include emails
 - `/campaign-copywriting` — write copy referencing their specific engagement pattern

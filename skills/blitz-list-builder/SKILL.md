@@ -1,6 +1,6 @@
 ---
 name: blitz-list-builder
-description: Use the Blitz API to find decision-makers at specific companies when you already have a list of company domains. Best for SMB owner-finding, domain-to-people lookup, or supplementing Prospeo results. Outputs a CSV you can feed to the email-waterfall or directly to /cold-email-starter-kit for Smartlead upload. Use when your targeting is company-first (not title-first).
+description: Use the Blitz API to find decision-makers at specific companies when you already have a list of company domains. Best for SMB owner-finding, domain-to-people lookup, or supplementing Prospeo results. Outputs a CSV you can feed to the /list-builder Phase 5 or directly to /cold-email-starter-kit for Smartlead upload. Use when your targeting is company-first (not title-first).
 ---
 
 # Blitz List Builder
@@ -36,7 +36,7 @@ Often: use Prospeo to build the initial list, then Blitz to add 1-2 more contact
 
 CSV with columns: `company_domain, first_name, last_name, job_title, linkedin_url, email, email_source, company_name, company_industry, company_headcount, company_phone`
 
-Email will be populated when Blitz returns one. Use `/email-waterfall` skill on the output to fill in missing emails via Prospeo/ZenRows/etc.
+Email will be populated when Blitz returns one. Use `/list-builder` Phase 5 (`scripts/contacts.ts`) on the output to fill in missing emails, then validate with MillionVerifier (`/cold-email-starter-kit`).
 
 ## Usage
 
@@ -111,7 +111,7 @@ The script does case-insensitive substring match. "vp" matches "VP Sales" but al
 - **Domain must be just the bare domain.** Blitz wants `acme.com`, not `https://acme.com/` or `sub.acme.com`.
 - **Huge companies return truncated employee lists.** Blitz caps at ~50-100 employees per domain. For enterprise-heavy lists, use Prospeo or LinkedIn search instead.
 - **Stale LinkedIn data.** Blitz's cache can be 3-12 months old. Job titles may have changed. Validate with the email waterfall.
-- **No email returned ≠ person unreachable.** 40% of hits have no email. Feed them to `/email-waterfall` — it'll try Prospeo + ZenRows.
+- **No email returned ≠ person unreachable.** 40% of hits have no email. Feed them to `/list-builder` Phase 5 (`scripts/contacts.ts`), which tries GetLeads, Blitz and Prospeo in cost order.
 - **Rate-limit errors.** 429 = you hit the cap. Script retries with exponential backoff, but long bursts still fail.
 
 ## Required step: Qualify with /icp-prompt-builder
@@ -144,8 +144,8 @@ Once you have the CSV, the typical flow:
 
 1. **Deduplicate** — remove duplicate emails, duplicate LinkedIn URLs
 2. **Filter** — drop rows where `job_title` doesn't cleanly match your ICP
-3. **Fill missing emails** — run `/email-waterfall` on rows with empty `email`
-4. **Validate** — run MillionVerifier on all emails (see `/email-waterfall` script)
+3. **Fill missing emails** — run `/list-builder` (Phase 5, emails) on rows with empty `email`
+4. **Validate** — run MillionVerifier on all emails (see `/cold-email-starter-kit` for the MillionVerifier script)
 5. **Upload** — pass to Smartlead via `/cold-email-starter-kit` script `smartlead-add-leads.ts`
 
 ## Scripts
@@ -154,7 +154,7 @@ Once you have the CSV, the typical flow:
 
 ## What to do next
 
-**Run `/email-waterfall`** to fill in emails for rows Blitz didn't return. Then `/list-quality-scorecard` to grade the final list.
+**Run `/list-builder` (Phase 5, emails)** to fill in emails for rows Blitz didn't return. Then `/list-quality-scorecard` to grade the final list.
 
 After the scorecard, proceed to `/campaign-copywriting` → `/smartlead-campaign-upload-public`.
 
@@ -166,5 +166,5 @@ After the scorecard, proceed to `/campaign-copywriting` → `/smartlead-campaign
 - `/prospeo-full-export` — the title-first alternative
 - `/google-maps-list-builder` — for local-business domain lists
 - `/disco-like` — lookalike companies from seed domains
-- `/email-waterfall` — when Blitz doesn't return an email
+- `/list-builder` (Phase 5, emails) — when Blitz doesn't return an email
 - `/cold-email-starter-kit` → `06-list-building-prospeo.md` for broader list-building context

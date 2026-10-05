@@ -131,7 +131,7 @@ icp_qualification_prompt:
 
 ```
 Prompt locked. To score your 5000 companies:
-  npx tsx ~/cold-email-ai-skills/skills/icp-prompt-builder/scripts/score-batch.ts \
+  npx tsx ~/cold-email-ai-skills/skills/list-expander/scripts/score-batch.ts \
     --prompt-file=profiles/<slug>/icp-prompt.txt \
     --companies=path/to/companies.csv \
     --out=scored.csv
@@ -147,7 +147,7 @@ Prompt locked. To score your 5000 companies:
 
 ## Using the tuned prompt at scale
 
-Once saved, the prompt is applied to the full list via `scripts/score-batch.ts`. Options:
+Once saved, the prompt is applied to the full list via `list-expander/scripts/score-batch.ts`. Options:
 
 **Option A (free, slow)** — run through Claude Code Task sub-agents in batches of 20 companies per agent. Good for <500 total.
 
@@ -162,7 +162,7 @@ The script supports both. Default is Option A to keep everything inside Claude C
 3. `/icp-prompt-builder` → tune qualification prompt on that sample (3-5 rounds typical)
 4. Scale the list-builder to 5,000+ companies
 5. Apply the tuned prompt to the full list → only keep `qualified: true` with `confidence >= 0.6`
-6. `/blitz-list-builder` or `/email-waterfall` on the qualified subset
+6. `/blitz-list-builder` or `/list-builder` (Phase 5, emails) on the qualified subset
 7. Upload to Smartlead
 
 ## Data points the prompt can use

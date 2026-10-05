@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generalized lane→Google Sheet pusher (replaces the Autoworklet-specific push_lane.py).
+"""Generalized lane→Google Sheet pusher (replaces the earlier single-client push_lane.py).
 Usage: push-sheet.py <sheet_id> <tab_title> <lane-final.csv> [contact-count.json]
 Replaces the tab's contents; updates a 'Summary' tab row if one exists with the tab title."""
 import csv, json, os, sys
